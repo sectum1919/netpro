@@ -3428,6 +3428,13 @@ var TransmuxingController = /** @class */ (function () {
         info.loaderType = this._ioctl.loaderType;
         info.currentSegmentIndex = this._currentSegmentIndex;
         info.totalSegmentCount = this._mediaDataSource.segments.length;
+        info.bps_audio = info.bps_video = 0;
+
+        // 我修改的地方
+        if (this._demuxer && this._demuxer._bpsInfo) {
+            info.bps_video = this._demuxer._bpsInfo.bps_video;
+            info.bps_audio = this._demuxer._bpsInfo.bps_audio;
+        }
         this._emitter.emit(_transmuxing_events_js__WEBPACK_IMPORTED_MODULE_8__.default.STATISTICS_INFO, info);
     };
     return TransmuxingController;
@@ -4160,6 +4167,19 @@ var FLVDemuxer = /** @class */ (function () {
             96000, 88200, 64000, 48000, 44100, 32000,
             24000, 22050, 16000, 12000, 11025, 8000, 7350
         ];
+
+        //我修改的地方
+        this._bpsCalculator = null;
+        this._bpsInfo = {
+            lastVideoBytes: 0,
+            lastAudioBytes: 0,
+            bps_video: 0,
+            bps_audio: 0,
+            delay: 0
+        };
+
+
+
         this._mpegAudioV10SampleRateTable = [44100, 48000, 32000, 0];
         this._mpegAudioV20SampleRateTable = [22050, 24000, 16000, 0];
         this._mpegAudioV25SampleRateTable = [11025, 12000, 8000, 0];
@@ -4187,6 +4207,13 @@ var FLVDemuxer = /** @class */ (function () {
         this._onScriptDataArrived = null;
         this._onTrackMetadata = null;
         this._onDataAvailable = null;
+
+        if (this._bpsCalculator) {
+            self.clearInterval(this._bpsCalculator);
+            this._bpsCalculator = null;
+            this._bpsInfo = null;
+        }
+        
     };
     FLVDemuxer.probe = function (buffer) {
         var data = new Uint8Array(buffer);
@@ -4335,6 +4362,36 @@ var FLVDemuxer = /** @class */ (function () {
         }
         return false;
     };
+
+    //我修改的地方
+    FLVDemuxer.prototype._calculateRealtimeBitrate = function() {
+        if (!this._bpsInfo) {
+            return;
+        }
+        if (player.buffered.length) {
+            let end = player.buffered.end(0);//获取当前buffered值
+            let diff = end - player.currentTime;//获取buffered与currentTime的差值
+            if (diff >= 0.5) {//如果差值大于等于0.5 手动跳帧 这里可根据自身需求来定
+                player.currentTime = player.buffered.end(0);//手动跳帧
+            }
+        }    
+        this._bpsInfo.bps_video = 8 * this._bpsInfo.lastVideoBytes / 1024;
+        this._bpsInfo.bps_audio = 8 * this._bpsInfo.lastAudioBytes / 1024;
+        let end = player.buffered.end(0);//获取当前buffered值
+        let diff = end - player.currentTime;//获取buffered与currentTime的差值
+        this._bpsInfo.delay = diff;
+        // Log.d(this.TAG, 'realtime av bitrate: v:' + video_bps + ', a:' + audio_bps);
+        _utils_logger_js__WEBPACK_IMPORTED_MODULE_0__.default.w(this.TAG, "_bpsInfo:"+JSON.stringify(this._bpsInfo));
+        
+        var x;
+        x = (new Date()).getTime();     // 当前时间
+        chart.series[0].addPoint([x, this._bpsInfo.bps_video], true, true);     //追加点并去掉一个点
+        chart.series[1].addPoint([x, this._bpsInfo.bps_audio], true, true);     //追加点并去掉一个点
+        activeLastPointToolip(chart);
+
+        this._bpsInfo.lastVideoBytes = this._bpsInfo.lastAudioBytes = 0;
+    }
+    
     // function parseChunks(chunk: ArrayBuffer, byteStart: number): number;
     FLVDemuxer.prototype.parseChunks = function (chunk, byteStart) {
         if (!this._onError || !this._onMediaInfo || !this._onTrackMetadata || !this._onDataAvailable) {
@@ -4351,6 +4408,13 @@ var FLVDemuxer = /** @class */ (function () {
                 return 0;
             }
         }
+
+        //我修改的地方
+        if (!this._bpsCalculator) {
+            this._bpsCalculator = self.setInterval(this._calculateRealtimeBitrate.bind(this), 1000);
+        }
+        
+
         if (this._firstParse) { // handle PreviousTagSize0 before Tag1
             this._firstParse = false;
             if (byteStart + offset !== this._dataOffset) {
@@ -4363,6 +4427,8 @@ var FLVDemuxer = /** @class */ (function () {
             }
             offset += 4;
         }
+        var audioBytes = 0;
+        var videoBytes = 0;
         while (offset < chunk.byteLength) {
             this._dispatch = true;
             var v = new DataView(chunk, offset);
@@ -4395,9 +4461,11 @@ var FLVDemuxer = /** @class */ (function () {
             switch (tagType) {
                 case 8: // Audio
                     this._parseAudioData(chunk, dataOffset, dataSize, timestamp);
+                    audioBytes += dataSize;
                     break;
                 case 9: // Video
                     this._parseVideoData(chunk, dataOffset, dataSize, timestamp, byteStart + offset);
+                    videoBytes += dataSize;
                     break;
                 case 18: // ScriptDataObject
                     this._parseScriptData(chunk, dataOffset, dataSize);
@@ -4409,12 +4477,20 @@ var FLVDemuxer = /** @class */ (function () {
             }
             offset += 11 + dataSize + 4; // tagBody + dataSize + prevTagSize
         }
+        
+        //我修改的地方
+        if (this._bpsInfo) {
+            this._bpsInfo.lastAudioBytes += audioBytes;
+            this._bpsInfo.lastVideoBytes += videoBytes;
+        }
+
         // dispatch parsed frames to consumer (typically, the remuxer)
         if (this._isInitialMetadataDispatched()) {
             if (this._dispatch && (this._audioTrack.length || this._videoTrack.length)) {
                 this._onDataAvailable(this._audioTrack, this._videoTrack);
             }
         }
+        //_utils_logger_js__WEBPACK_IMPORTED_MODULE_0__.default.w(this.TAG, "_bpsInfo:"+JSON.stringify(this._bpsInfo));
         return offset; // consumed bytes, just equals latest offset index
     };
     FLVDemuxer.prototype._parseScriptData = function (arrayBuffer, dataOffset, dataSize) {

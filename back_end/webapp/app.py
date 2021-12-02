@@ -21,7 +21,7 @@ def index():
 def stream(file_name):
     session['livepath'] = file_name
     print("session",session['livepath'])
-    return render_template('live.html', livepath=session['livepath'])
+    return render_template('flv.html', livepath=session['livepath'])
 
 @app.route('/hls/<string:file_name>')
 def hls(file_name):
