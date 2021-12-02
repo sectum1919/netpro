@@ -1,0 +1,21 @@
+<body>
+    <video id='video' controls autoplay muted></video>
+</body>
+
+  <script src="/static/js/hls.js"></script>
+  <script type="text/javascript">
+    hls_livepath="{{hls_livepath}}"
+    if (Hls.isSupported()) {
+      var video = document.getElementById('video');
+      var hls = new Hls();
+      // bind them together
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MEDIA_ATTACHED, function () {
+        console.log("video and hls.js are now bound together !");
+        hls.loadSource("http://8.140.168.4:8080/hls/"+hls_livepath+".m3u8");
+        hls.on(Hls.Events.MANIFEST_PARSED, function (event, data) {
+          console.log("manifest loaded, found " + data.levels.length + " quality level");
+        });
+      });
+    }
+  </script>

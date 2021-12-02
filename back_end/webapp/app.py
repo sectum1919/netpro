@@ -23,6 +23,12 @@ def stream(file_name):
     print("session",session['livepath'])
     return render_template('live.html', livepath=session['livepath'])
 
+@app.route('/hls/<string:file_name>')
+def hls(file_name):
+    session['hls_livepath'] = file_name
+    print("session",session['hls_livepath'])
+    return render_template('hls.html', hls_livepath=session['hls_livepath'])
+
 # @app.route('/hls/<string:file_name>')
 # def hls(file_name):
 #     video_dir = '/home/homepages/netpro/m3u8File/'
