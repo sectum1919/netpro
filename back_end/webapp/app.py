@@ -29,6 +29,12 @@ def hls(file_name):
     print("session",session['hls_livepath'])
     return render_template('hls.html', hls_livepath=session['hls_livepath'])
 
+@app.route('/dash/<string:file_name>')
+def dash(file_name):
+    session['dash_livepath'] = file_name
+    print("session",session['dash_livepath'])
+    return render_template('dash.html', dash_livepath=session['dash_livepath'])
+
 # @app.route('/hls/<string:file_name>')
 # def hls(file_name):
 #     video_dir = '/home/homepages/netpro/m3u8File/'

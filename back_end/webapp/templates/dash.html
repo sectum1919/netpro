@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset=utf-8 />
+<body>
+
+<script src="/static/js/dash.all.min.js"></script>
+<video id="videoElement" controls autoplay muted></video>
+<script>
+    dash_livepath="{{dash_livepath}}"
+    var url = "http://8.140.168.4:8080/dash/"+dash_livepath+".mpd";
+    var videoElement = document.getElementById('videoElement');
+    var player = dashjs.MediaPlayer().create();
+
+    player.initialize(videoElement, url, true);
+</script>
+
+</body>
+</html>
