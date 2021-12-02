@@ -4,7 +4,7 @@
 <meta charset=utf-8 />
 <body>
 
-<script src="/static/js/flv.min.js"></script>
+<script src="/static/js/flv.js"></script>
 <video id="videoElement" controls autoplay muted></video>
 <script type="text/javascript">
     livepath="{{livepath}}"
@@ -12,7 +12,7 @@
         var videoElement = document.getElementById('videoElement');
         var flvPlayer = flvjs.createPlayer({
             type: 'flv',
-            url: 'http://8.140.168.4:8080/live?&app=live&stream='+livepath
+            url: 'http://120.53.245.106:8080/live?&app=live&stream='+livepath
         });
         flvPlayer.attachMediaElement(videoElement);
         flvPlayer.load();
