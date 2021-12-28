@@ -1967,7 +1967,7 @@ var AudioStreamController = /*#__PURE__*/function (_BaseStreamController) {
       return;
     }
 
-    this.log("Track " + trackId + " loaded [" + newDetails.startSN + "," + newDetails.endSN + "],duration:" + newDetails.totalduration);
+    this.log("!!Track " + trackId + " loaded [" + newDetails.startSN + "," + newDetails.endSN + "],duration:" + newDetails.totalduration);
     var track = levels[trackId];
     var sliding = 0;
 
@@ -10027,6 +10027,13 @@ var StreamController = /*#__PURE__*/function (_BaseStreamController) {
     if (frag.sn !== 'initSegment') {
       this.fragPrevious = frag;
     }
+    // modified by cc
+    // console.log("debugdebug");
+    // console.log(this.fragLastKbps);
+    hls_infos["fragLastKbps"] = this.fragLastKbps;
+    var buffered = _utils_buffer_helper__WEBPACK_IMPORTED_MODULE_4__["BufferHelper"].getBuffered(media);
+    hls_infos["buffer_length"] = buffered.length;
+
 
     this.fragBufferedComplete(frag, part);
   };

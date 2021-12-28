@@ -17,11 +17,11 @@ def index():
     """Video streaming home page."""
     return render_template('index.html')
 
-@app.route('/stream/<string:file_name>')
-def stream(file_name):
-    session['livepath'] = file_name
-    print("session",session['livepath'])
-    return render_template('flv.html', livepath=session['livepath'])
+@app.route('/flv/<string:file_name>')
+def flv(file_name):
+    session['flv_livepath'] = file_name
+    print("session",session['flv_livepath'])
+    return render_template('flv.html', flv_livepath=session['flv_livepath'])
 
 @app.route('/hls/<string:file_name>')
 def hls(file_name):

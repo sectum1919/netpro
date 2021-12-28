@@ -4368,26 +4368,21 @@ var FLVDemuxer = /** @class */ (function () {
         if (!this._bpsInfo) {
             return;
         }
-        if (player.buffered.length) {
-            let end = player.buffered.end(0);//获取当前buffered值
-            let diff = end - player.currentTime;//获取buffered与currentTime的差值
-            if (diff >= 0.5) {//如果差值大于等于0.5 手动跳帧 这里可根据自身需求来定
-                player.currentTime = player.buffered.end(0);//手动跳帧
-            }
-        }    
         this._bpsInfo.bps_video = 8 * this._bpsInfo.lastVideoBytes / 1024;
         this._bpsInfo.bps_audio = 8 * this._bpsInfo.lastAudioBytes / 1024;
         let end = player.buffered.end(0);//获取当前buffered值
         let diff = end - player.currentTime;//获取buffered与currentTime的差值
         this._bpsInfo.delay = diff;
-        // Log.d(this.TAG, 'realtime av bitrate: v:' + video_bps + ', a:' + audio_bps);
+
         _utils_logger_js__WEBPACK_IMPORTED_MODULE_0__.default.w(this.TAG, "_bpsInfo:"+JSON.stringify(this._bpsInfo));
         
         var x;
         x = (new Date()).getTime();     // 当前时间
         chart.series[0].addPoint([x, this._bpsInfo.bps_video], true, true);     //追加点并去掉一个点
         chart.series[1].addPoint([x, this._bpsInfo.bps_audio], true, true);     //追加点并去掉一个点
+        chart_delay.series[0].addPoint([x, this._bpsInfo.delay], true, true);     //追加点并去掉一个点
         activeLastPointToolip(chart);
+        activeLastPointToolip(chart_delay);
 
         this._bpsInfo.lastVideoBytes = this._bpsInfo.lastAudioBytes = 0;
     }

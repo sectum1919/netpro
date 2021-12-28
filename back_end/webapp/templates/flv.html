@@ -14,7 +14,7 @@
 
 <body>
     <script type="text/javascript">
-        hls_livepath="{{hls_livepath}}"
+        flv_livepath="{{flv_livepath}}"
 
     </script>
     <div class="videoMainBox">
@@ -76,6 +76,8 @@
         var video_state_monitor_enabled = true;
         var gain_level = 2;
         var reload_interval;
+        var chart_delay;
+        var chart;
 
         function changeAudioGainLevel(value) {
             gain_level = value;
@@ -189,20 +191,21 @@
                 flv_load();
             });
             // 已在这修改
-            player.on(flvjs.Events.ERROR, (errorType, errorDetail, errorInfo) => {
-                console.log("errorType:", errorType);
-                console.log("errorDetail:", errorDetail);
-                console.log("errorInfo:", errorInfo);
-                //视频出错后销毁重新创建
-                if (player) {
-                player.pause();
-                player.unload();
-                player.detachMediaElement();
-                player.destroy();
-                player= null;
-                createPlayer(videoElement, this.url);
-                }
-            });
+            // player.on(flvjs.Events.ERROR, (errorType, errorDetail, errorInfo) => {
+            //     console.log("errorType:", errorType);
+            //     console.log("errorDetail:", errorDetail);
+            //     console.log("errorInfo:", errorInfo);
+            //     //视频出错后销毁重新创建
+            //     if (player) {
+            //         player.pause();
+            //         player.unload();
+            //         player.detachMediaElement();
+            //         player.destroy();
+            //         player= null;
+            //         createPlayer(videoElement, this.url);
+            //     }
+            // });
+
 
             // see flv.js {api.md}, for example:
             // ErrorType: NetworkError
@@ -365,7 +368,7 @@
             var points = chart.series[0].points;
             chart.tooltip.refresh(points[points.length -1]);
         }
-        var chart = Highcharts.chart('container', {
+        chart = Highcharts.chart('container', {
             chart: {
                 type: 'spline',
                 marginLeft: 100,
@@ -430,7 +433,7 @@
                 }
             ]
         });
-        var chart_delay = Highcharts.chart('container_delay', {
+        chart_delay = Highcharts.chart('container_delay', {
             chart: {
                 type: 'spline',
                 marginLeft: 100,
@@ -443,20 +446,14 @@
                     }
                 }
             },
-            title: { text: 'BPS' },
+            title: { text: 'Buffer length' },
             xAxis: { type: 'datetime', tickPixelInterval: 150 },
             yAxis: [
                 {
-                    title: { text: 'video bps' },
-                    labels: { format: '{value} bps' },
+                    title: { text: 'Buffer length' },
+                    labels: { format: '{value} s' },
                     min: 0 ,
                 },
-                {
-                    title: { text: 'audio bps' },
-                    labels: { format: '{value} bps' },
-                    min: 0 ,
-                    opposite: true, // Y轴分立两侧
-                }
             ],
             tooltip: {
                 formatter: function () {
@@ -469,20 +466,7 @@
             series: [
                 {
                     yAxis: 0,
-                    name: 'Video bps',
-                    data: (function () {
-                        var data = [],
-                            time = (new Date()).getTime(),
-                            i;
-                        for (i = -59; i <= 0; i += 1) {
-                            data.push({ x: time + i * 1000, y: 0 });
-                        }
-                        return data;
-                    }())
-                },
-                {
-                    yAxis: 1,
-                    name: 'Audio bps',
+                    name: 'Buffer length',
                     data: (function () {
                         var data = [],
                             time = (new Date()).getTime(),

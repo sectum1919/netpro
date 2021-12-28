@@ -1,19 +1,381 @@
 <!DOCTYPE html>
 <html>
+
 <head>
-<meta charset=utf-8 />
+    <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+    <title>dash.js demo</title>
+    <link rel="stylesheet" type="text/css" href="/static/css/flv_demo.css" />
+    
+    <script src="/static/js/dash.all.min.js"></script>
+    <script src="https://cdn.highcharts.com.cn/highcharts/highcharts.js"></script>
+    <script src="https://cdn.highcharts.com.cn/highcharts/modules/exporting.js"></script>
+    <script src="https://img.hcharts.cn/highcharts-plugins/highcharts-zh_CN.js"></script>
+
+</head>
+
 <body>
+    <script type="text/javascript">
+        dash_livepath="{{dash_livepath}}"
 
-<script src="/static/js/dash.all.min.js"></script>
-<video id="videoElement" controls autoplay muted></video>
-<script>
-    dash_livepath="{{dash_livepath}}"
-    var url = "http://120.53.245.106:8080/dash/"+dash_livepath+".mpd";
-    var videoElement = document.getElementById('videoElement');
-    var player = dashjs.MediaPlayer().create();
+    </script>
+    <div class="videoMainBox">
+        <div class="videoBox">
+            <video id="videoElement" style="width:100%; height:100%" autoplay>
+                Your browser is too old which doesn't support HTML5 video.
+            </video>
+        </div>
+    </div>
 
-    player.initialize(videoElement, url, true);
-</script>
+    <div class="mainContainer">
+        <div>
+            <div id="streamURL">
+                <div class="url-input">
+                    <label for="sURL">Stream URL:</label>
+                    <input id="sURL" type="text" value="http://120.53.245.106:8080/dash/cc.mpd" />
+                </div>
+            </div>
+        </div>
+        
+        <div style="padding-left: 10px;">
+            <p class="tiy" onclick="dash_load()">加载</p>
+            <p class="tiy" onclick="dash_destroy()">销毁</p>
+            <p class="tiy" onclick="saveSettings()">保存设置</p>
+            <!-- <p class="tiy" onclick="clear_log()">清除输出</p> -->
+            输出音量增益：<input type="range" min="0" max="10" value="2" step="1" onchange="changeAudioGainLevel(this.value)" />
+            <!-- <p class="tiy" onclick="dash_start()">开始</p>
+            <p class="tiy" onclick="dash_pause()">暂停</p>
+            <button onclick="dash_videostate_moitor()">VideoStateMonitor</button> -->
+        </div>
+        <textarea id="logcatbox" name="logcatbox" class="hidden" rows="20" readonly></textarea>
+    </div>
+    
+    <script>
+        var streamURL;
+        var video_state_monitor_enabled = true;
+        var gain_level = 2;
+        var reload_interval;
+        var player = dashjs.MediaPlayer().create();
+        var chart;
+        var chart_delay;
+        let context = this.context;
 
+        document.getElementById("sURL").value = "http://120.53.245.106:8080/dash/"+dash_livepath+".mpd";
+        dash_load()
+
+        setInterval(function () {
+            if (player && player.isReady()) {
+                var d = new Date();
+                var seconds = d.getSeconds();
+                var minutes = d.getMinutes();
+                var delay = Math.round((d.getTime() / 1000) - Number(player.timeAsUTC()));
+                var bufferLength = player.getBufferLength();
+                chart_delay.series[0].addPoint([d.getTime(), bufferLength], true, true);     //追加点并去掉一个点
+                chart_delay.series[1].addPoint([d.getTime(), delay], true, true);     //追加点并去掉一个点
+                activeLastPointToolip(chart_delay);
+                getMyDashMetrics('video');
+                getMyDashMetrics('audio');
+                activeLastPointToolip(chart);
+            }
+        }, 1000);
+
+        function getBytesLength(request) {
+            return request.trace.reduce((a, b) => a + b.b[0], 0);
+        }
+
+        function getMyDashMetrics(mediaType) {
+            var matrics = player.getDashMetrics();
+            var bufferLevel = matrics.getCurrentBufferLevel(mediaType); // 当前缓冲的秒数
+            let requests = matrics.getHttpRequests(mediaType);
+            let lastRequest = null;
+            let currentRequest = null;
+            
+            if(!requests) {
+                return;
+            }
+            // 获取上一个有效的HTTP请求
+            let i = requests.length - 1; 
+            while(i >=0 && lastRequest === null) {
+                currentRequest = requests[i];
+                if (currentRequest._tfinish && currentRequest.trequest && currentRequest.tresponse && currentRequest.trace && currentRequest.trace.length > 0) {
+                    lastRequest = requests[i];
+                }
+                i--;
+            }
+            if(lastRequest === null) {
+                return;
+            }
+            if(lastRequest.type !== 'MediaSegment' ) {
+                return;
+            }
+            // 视频块传输时间
+            // trequest:客户端发送HTTP请求的时间点
+            // tresponse:客户端接收到HTTP相应的第一个字节的时间点
+            // _tfinish：客户端接受完HTTP相应的最后一个字节的时间点，既请求完成时间。
+            let transmissionTime = (lastRequest._tfinish.getTime() - lastRequest.trequest.getTime()) / 1000;  // 单位为s 
+            // 有了传输数据量（视频块大小）和传输时间，视频块吞吐量（单位为bps）则由视频块传输时间计算得到:
+            let chunkSzie = getBytesLength(lastRequest);
+            let throughput = chunkSzie / transmissionTime;
+            throughput = throughput / 1024;
+            console.log(mediaType+'块大小为:' +chunkSzie / 1024+'KB');
+            console.log(throughput+'KBps');
+
+            var d = new Date();
+            if (mediaType==='video'){
+                chart.series[0].addPoint([d.getTime(), throughput], true, true);     //追加点并去掉一个点
+            } else {
+                chart.series[1].addPoint([d.getTime(), throughput], true, true);     //追加点并去掉一个点
+            }
+            return;
+        }
+
+        function changeAudioGainLevel(value) {
+            gain_level = value;
+        }
+
+        function dash_load() {
+            var videoElement = document.getElementById('videoElement');
+            player = dashjs.MediaPlayer().create();
+            player.initialize(videoElement, document.getElementById("sURL").value, true);
+            player.updateSettings({
+                'debug': {
+                    'logLevel': dashjs.Debug.LOG_LEVEL_FATAL
+                }
+            });
+            dash_start();
+            clear_log();
+        }
+
+        function dash_videostate_moitor() {
+            
+        }
+
+        function dash_start() {
+            player.play();
+        }
+
+        function dash_pause() {
+            player.pause();
+        }
+
+        function dash_destroy() {
+            player.destroy();
+            player = null;
+        }
+
+        function dash_seekto() {
+            var input = document.getElementsByName('seekpoint')[0];
+            player.currentTime = parseFloat(input.value);
+        }
+
+        function ls_get(key, def) {
+            try {
+                var ret = localStorage.getItem('dashjs_demo.' + key);
+                if (ret === null) {
+                    ret = def;
+                }
+                return ret;
+            } catch (e) {}
+            return def;
+        }
+
+        function ls_set(key, value) {
+            try {
+                localStorage.setItem('dashjs_demo.' + key, value);
+            } catch (e) {}
+        }
+
+        function saveSettings() {
+            var i;
+            var sURL = document.getElementById('sURL');
+            ls_set('sURL', sURL.value);
+            console.log('save');
+        }
+
+        function loadSettings() {
+            var i;
+            var sURL = document.getElementById('sURL');
+            sURL.value = ls_get('sURL', sURL.value);
+        }
+
+        function showVersion() {
+            var version = dashjs.version;
+            document.title = document.title + " (v" + version + ")";
+        }
+
+        function clear_log() {
+            document.getElementById('logcatbox').value = "";
+        }
+
+        var logcatbox = document.getElementsByName('logcatbox')[0];
+        // dashjs.LoggingControl.addLogListener(function(type, str) {
+        //     logcatbox.value = logcatbox.value + str + '\n';
+        //     logcatbox.scrollTop = logcatbox.scrollHeight;
+        // });
+
+        if (document.addEventListener) {
+            document.addEventListener('webkitvisibilitychange', () => {
+                console.log('webkitvisibilitychange to ' + document.webkitVisibilityState);
+                if (document.webkitVisibilityState === 'visible') {
+                    //reload dashjs player ?
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            loadSettings();
+            showVersion();
+            dash_load();
+        });
+    </script>
+
+    <div id="container" style="min-width:400px;height:400px"></div>
+    <div id="container_delay" style="min-width:400px;height:400px"></div>
+    <script>
+        // JS 代码 
+        Highcharts.setOptions({
+            global: {
+                useUTC: false
+            }
+        });
+        function activeLastPointToolip(chart) {
+            var points = chart.series[0].points;
+            chart.tooltip.refresh(points[points.length -1]);
+            points = chart.series[1].points;
+            chart.tooltip.refresh(points[points.length -1]);
+        }
+        chart = Highcharts.chart('container', {
+            chart: {
+                type: 'spline',
+                marginLeft: 100,
+                marginRight: 100,
+                events: {
+                    load: function () {
+                        var series = this.series[0],
+                            chart = this;
+                        activeLastPointToolip(chart);
+                    }
+                }
+            },
+            title: { text: 'Download Bitrate' },
+            xAxis: { type: 'datetime', tickPixelInterval: 150 },
+            yAxis: [
+                {
+                    title: { text: 'video kbps' },
+                    labels: { format: '{value} kbps' },
+                    min: 0 ,
+                },
+                {
+                    title: { text: 'audio kbps' },
+                    labels: { format: '{value} kbps' },
+                    min: 0 ,
+                    opposite: true, // Y轴分立两侧
+                }
+            ],
+            tooltip: {
+                formatter: function () {
+                    return '<b>' + this.series.name + '</b><br/>' +
+                        Highcharts.dateFormat('%Y-%m-%d %H:%M:%S', this.x) + '<br/>' +
+                        Highcharts.numberFormat(this.y, 2);
+                }
+            },
+            legend: { enabled: false },
+            series: [
+                {
+                    yAxis: 0,
+                    name: 'Video bps',
+                    data: (function () {
+                        var data = [],
+                            time = (new Date()).getTime(),
+                            i;
+                        for (i = -59; i <= 0; i += 1) {
+                            data.push({ x: time + i * 1000, y: 0 });
+                        }
+                        return data;
+                    }())
+                },
+                {
+                    yAxis: 1,
+                    name: 'Audio bps',
+                    data: (function () {
+                        var data = [],
+                            time = (new Date()).getTime(),
+                            i;
+                        for (i = -59; i <= 0; i += 1) {
+                            data.push({ x: time + i * 1000, y: 0 });
+                        }
+                        return data;
+                    }())
+                }
+            ]
+        });
+        chart_delay = Highcharts.chart('container_delay', {
+            chart: {
+                type: 'spline',
+                marginLeft: 100,
+                marginRight: 100,
+                events: {
+                    load: function () {
+                        var series = this.series[0],
+                            chart = this;
+                        activeLastPointToolip(chart);
+                    }
+                }
+            },
+            title: { text: 'Buffer length & Latency' },
+            xAxis: { type: 'datetime', tickPixelInterval: 150 },
+            yAxis: [
+                {
+                    title: { text: 'Buffer length' },
+                    labels: { format: '{value} s' },
+                    min: 0 ,
+                    max: 60,
+                },
+                {
+                    title: { text: 'Latency' },
+                    labels: { format: '{value} s' },
+                    min: 0 ,
+                    max: 60,
+                    opposite: true, // Y轴分立两侧
+                },
+            ],
+            tooltip: {
+                formatter: function () {
+                    return '<b>' + this.series.name + '</b><br/>' +
+                        Highcharts.dateFormat('%Y-%m-%d %H:%M:%S', this.x) + '<br/>' +
+                        Highcharts.numberFormat(this.y, 2);
+                }
+            },
+            legend: { enabled: false },
+            series: [
+                {
+                    yAxis: 0,
+                    name: 'Buffer length',
+                    data: (function () {
+                        var data = [],
+                            time = (new Date()).getTime(),
+                            i;
+                        for (i = -59; i <= 0; i += 1) {
+                            data.push({ x: time + i * 1000, y: 0 });
+                        }
+                        return data;
+                    }())
+                },
+                {
+                    yAxis: 1,
+                    name: 'Latency',
+                    data: (function () {
+                        var data = [],
+                            time = (new Date()).getTime(),
+                            i;
+                        for (i = -59; i <= 0; i += 1) {
+                            data.push({ x: time + i * 1000, y: 0 });
+                        }
+                        return data;
+                    }())
+                }
+            ]
+        });
+    </script>
 </body>
+
 </html>

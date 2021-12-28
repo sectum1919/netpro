@@ -1,21 +1,334 @@
-<body>
-    <video id='video' controls autoplay muted></video>
-</body>
+<!DOCTYPE html>
+<html>
 
-  <script src="/static/js/hls.js"></script>
-  <script type="text/javascript">
-    hls_livepath="{{hls_livepath}}"
-    if (Hls.isSupported()) {
-      var video = document.getElementById('video');
-      var hls = new Hls();
-      // bind them together
-      hls.attachMedia(video);
-      hls.on(Hls.Events.MEDIA_ATTACHED, function () {
-        console.log("video and hls.js are now bound together !");
-        hls.loadSource("http://120.53.245.106:8080/hls/"+hls_livepath+".m3u8");
-        hls.on(Hls.Events.MANIFEST_PARSED, function (event, data) {
-          console.log("manifest loaded, found " + data.levels.length + " quality level");
+  <head>
+      <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+      <title>hls.js demo</title>
+      <link rel="stylesheet" type="text/css" href="/static/css/flv_demo.css" />
+      <script type="text/javascript">
+        var hls_infos={};
+        hls_infos["fragLastKbps"]=0;
+        hls_infos["buffer_length"]=0
+      </script>
+      <script src="/static/js/hls.js"></script>
+      <script src="https://cdn.highcharts.com.cn/highcharts/highcharts.js"></script>
+      <script src="https://cdn.highcharts.com.cn/highcharts/modules/exporting.js"></script>
+      <script src="https://img.hcharts.cn/highcharts-plugins/highcharts-zh_CN.js"></script>
+  
+  </head>
+
+  <body>
+    <script type="text/javascript">
+      hls_livepath="{{hls_livepath}}"
+    </script>
+    
+    <div class="videoMainBox">
+      <div class="videoBox">
+          <video id="videoElement" style="width:100%; height:100%" autoplay>
+              Your browser is too old which doesn't support HTML5 video.
+          </video>
+      </div>
+    </div>
+
+    <div class="mainContainer">
+      <div>
+          <div id="streamURL">
+              <div class="url-input">
+                  <label for="sURL">Stream URL:</label>
+                  <input id="sURL" type="text" value="http://120.53.245.106:8080/hls/cc.m3u8" />
+              </div>
+          </div>
+      </div>
+
+      <div style="padding-left: 10px;">
+        <p class="tiy" onclick="hls_load()">加载</p>
+        <p class="tiy" onclick="hls_destroy()">销毁</p>
+        <p class="tiy" onclick="saveSettings()">保存设置</p>
+        <p class="tiy" onclick="clear_log()">清除输出</p>
+        输出音量增益：<input type="range" min="0" max="10" value="2" step="1" onchange="changeAudioGainLevel(this.value)" />
+        <!-- <p class="tiy" onclick="hls_start()">开始</p> -->
+        <!-- <p class="tiy" onclick="hls_pause()">暂停</p> -->
+        <!-- <button onclick="hls_videostate_moitor()">VideoStateMonitor</button> -->
+      </div>
+    
+      <textarea id="logcatbox" name="logcatbox" class="hidden" rows="20" readonly></textarea>
+    </div>
+
+    <script>
+        var streamURL;
+        var video_state_monitor_enabled = true;
+        var gain_level = 2;
+        var reload_interval;
+        var player = new Hls();
+        // var cmcdController = new CMCDController();
+
+        // 加载
+
+        function changeAudioGainLevel(value) {
+            gain_level = value;
+        }
+        
+        function hls_load() {
+            if (Hls.isSupported()) {
+                var video = document.getElementById('videoElement');
+                // bind them together
+                player.attachMedia(video);
+                player.on(Hls.Events.MEDIA_ATTACHED, function () {
+                    console.log("video and hls.js are now bound together !");
+                    player.loadSource(document.getElementById("sURL").value);
+                    player.on(Hls.Events.MANIFEST_PARSED, function (event, data) {
+                    console.log("manifest loaded, found " + data.levels.length + " quality level");
+                    });
+                });
+            }
+            // clear_log();
+        }
+
+        function hls_destroy() {
+            player.destroy();
+            player = null;
+        }
+
+        function ls_get(key, def) {
+            try {
+                var ret = localStorage.getItem('hlsjs_demo.' + key);
+                if (ret === null) {
+                    ret = def;
+                }
+                return ret;
+            } catch (e) {}
+            return def;
+        }
+
+        function ls_set(key, value) {
+            try {
+                localStorage.setItem('hlsjs_demo.' + key, value);
+            } catch (e) {}
+        }
+
+        function saveSettings() {
+            var i;
+            var sURL = document.getElementById('sURL');
+            ls_set('sURL', sURL.value);
+            console.log('save');
+        }
+
+        function loadSettings() {
+            var i;
+            var sURL = document.getElementById('sURL');
+            sURL.value = ls_get('sURL', sURL.value);
+        }
+
+        function showVersion() {
+            var version = Hls.version;
+            document.title = document.title + " (v" + version + ")";
+        }
+
+        if (document.addEventListener) {
+            document.addEventListener('webkitvisibilitychange', () => {
+                console.log('webkitvisibilitychange to ' + document.webkitVisibilityState);
+                if (document.webkitVisibilityState === 'visible') {
+                    //reload hlsjs player ?
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            loadSettings();
+            showVersion();
+            hls_load();
         });
-      });
-    }
-  </script>
+
+        // log
+
+        // function clear_log() {
+        //     document.getElementById('logcatbox').value = "";
+        // }
+
+        // var logcatbox = document.getElementsByName('logcatbox')[0];
+        // hlsjs.LoggingControl.addLogListener(function(type, str) {
+        //     logcatbox.value = logcatbox.value + str + '\n';
+        //     logcatbox.scrollTop = logcatbox.scrollHeight;
+        // });
+
+        // 计算 BPS 和 Latency
+
+        var chart;
+        var chart_delay;
+
+        setInterval(function () {
+            if (player) {
+                var d = new Date();
+
+                // bps
+                var bps = getKbps();
+                chart.series[0].addPoint([d.getTime(), bps], true, true);
+                // delay
+                var delay = getLatency();
+                chart_delay.series[0].addPoint([d.getTime(), delay], true, true);     //追加点并去掉一个点
+                // buffer
+                var bufferlength = getBuffer();
+                chart_delay.series[1].addPoint([d.getTime(), bufferlength], true, true);     //追加点并去掉一个点
+
+                
+                activeLastPointToolip(chart);
+                activeLastPointToolip(chart_delay);
+            }
+        }, 1000);
+
+        function getLatency() {
+            var d = new Date();
+            console.log(d.toUTCString() + " 时延为 " + player.latency);
+            return player.latency;
+        }
+
+        function getKbps() {
+            var d = new Date();
+            console.log(d.toUTCString() + " 下载速率为 " + hls_infos["fragLastKbps"]);
+            return hls_infos["fragLastKbps"];
+        }
+
+        function getBuffer() {
+            var d = new Date();
+            var video = document.getElementById('videoElement');
+            buffered = video.buffered;
+            current = video.currentTime;
+            idx  = buffered.length-1;
+            bufferlength = buffered.end(idx) - current;
+            console.log("length "+buffered.length +" start " + buffered.start(idx) + " end "+buffered.end(idx));
+            console.log("currentTime "+current);
+            return bufferlength;
+        }
+
+    </script>
+
+    <!-- 图表 -->
+    <div id="container" style="min-width:400px;height:400px"></div>
+    <div id="container_delay" style="min-width:400px;height:400px"></div>
+    <script>
+        // JS 代码 
+        Highcharts.setOptions({
+            global: {
+                useUTC: false
+            }
+        });
+        function activeLastPointToolip(chart) {
+            var points = chart.series[0].points;
+            chart.tooltip.refresh(points[points.length -1]);
+        }
+        chart = Highcharts.chart('container', {
+            chart: {
+                type: 'spline',
+                marginLeft: 100,
+                marginRight: 100,
+                events: {
+                    load: function () {
+                        var series = this.series[0],
+                            chart = this;
+                        activeLastPointToolip(chart);
+                    }
+                }
+            },
+            title: { text: 'Lask Chunk bps' },
+            xAxis: { type: 'datetime', tickPixelInterval: 150 },
+            yAxis: [
+                {
+                    title: { text: 'Lask Chunk bps' },
+                    labels: { format: '{value} bps' },
+                    min: 0 ,
+                }
+            ],
+            tooltip: {
+                formatter: function () {
+                    return '<b>' + this.series.name + '</b><br/>' +
+                        Highcharts.dateFormat('%Y-%m-%d %H:%M:%S', this.x) + '<br/>' +
+                        Highcharts.numberFormat(this.y, 2);
+                }
+            },
+            legend: { enabled: false },
+            series: [
+                {
+                    yAxis: 0,
+                    name: 'Lask Chunk bps',
+                    data: (function () {
+                        var data = [],
+                            time = (new Date()).getTime(),
+                            i;
+                        for (i = -59; i <= 0; i += 1) {
+                            data.push({ x: time + i * 1000, y: 0 });
+                        }
+                        return data;
+                    }())
+                }
+            ]
+        });
+        chart_delay = Highcharts.chart('container_delay', {
+            chart: {
+                type: 'spline',
+                marginLeft: 100,
+                marginRight: 100,
+                events: {
+                    load: function () {
+                        var series = this.series[0],
+                            chart = this;
+                        activeLastPointToolip(chart);
+                    }
+                }
+            },
+            title: { text: 'Latency & Buffer length' },
+            xAxis: { type: 'datetime', tickPixelInterval: 150 },
+            yAxis: [
+                {
+                    title: { text: 'Latency' },
+                    labels: { format: '{value} s' },
+                    min: 0 ,
+                },
+                {
+                    title: { text: 'buffer_length' },
+                    labels: { format: '{value}' },
+                    min: 0 ,
+                    opposite: true, // Y轴分立两侧
+                },
+            ],
+            tooltip: {
+                formatter: function () {
+                    return '<b>' + this.series.name + '</b><br/>' +
+                        Highcharts.dateFormat('%Y-%m-%d %H:%M:%S', this.x) + '<br/>' +
+                        Highcharts.numberFormat(this.y, 2);
+                }
+            },
+            legend: { enabled: false },
+            series: [
+                {
+                    yAxis: 0,
+                    name: 'Latency',
+                    data: (function () {
+                        var data = [],
+                            time = (new Date()).getTime(),
+                            i;
+                        for (i = -59; i <= 0; i += 1) {
+                            data.push({ x: time + i * 1000, y: 0 });
+                        }
+                        return data;
+                    }())
+                },
+                {
+                    yAxis: 1,
+                    name: 'Buffer Length',
+                    data: (function () {
+                        var data = [],
+                            time = (new Date()).getTime(),
+                            i;
+                        for (i = -59; i <= 0; i += 1) {
+                            data.push({ x: time + i * 1000, y: 0 });
+                        }
+                        return data;
+                    }())
+                }
+            ]
+        });
+    </script>
+  
+  </body>
+
+</html>
